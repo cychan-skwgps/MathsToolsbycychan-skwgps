@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<!-- 
+***************************************************
+* 速率模擬器 (Rate Simulator - Enhanced Info)
+* 版權所有 (C) 2024 陳俊諺老師
+***************************************************
+-->
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>六年級數學：速率模擬器 - 陳俊諺老師製作</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background-color: #f1f5f9;
+            user-select: none;
+        }
+        .stage-grid {
+            background-color: #ffffff;
+        }
+        .watermark-bg {
+            position: absolute;
+            bottom: 15px;
+            right: 25px;
+            font-size: 2.5rem;
+            font-weight: 300;
+            color: rgba(0, 0, 0, 0.04);
+            pointer-events: none;
+            z-index: 1;
+            letter-spacing: 2px;
+        }
+        .center-line {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background-color: #ef4444;
+            z-index: 5;
+            opacity: 0.5;
+        }
+        .origin-label {
+            position: absolute;
+            top: 4px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            white-space: nowrap;
+        }
+        .object-node {
+            transition: transform 0.1s linear;
+            will-change: transform;
+        }
+        @keyframes subtle-bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
+        }
+        .is-moving .icon-wrapper {
+            animation: subtle-bounce 0.4s infinite ease-in-out;
+        }
+        #formulaToast {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .toast-hidden { opacity: 0; pointer-events: none; transform: translate(-50%, -60%); }
+        .toast-visible { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%); }
+        
+        #zoomBadge {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="flex flex-col">
+
+    <!-- 公式提示視窗 -->
+    <div id="formulaToast" class="fixed top-1/2 left-1/2 z-[100] toast-hidden bg-slate-800/95 text-white p-6 rounded-2xl shadow-2xl border border-slate-600 backdrop-blur-md min-w-[280px]">
+        <div class="text-center">
+            <div class="text-indigo-400 text-xs font-bold mb-3 uppercase tracking-widest">速率公式提示</div>
+            <div class="space-y-3 text-lg">
+                <p class="font-black text-xl border-b border-slate-700 pb-2">速率 = 路程 ÷ 時間</p>
+                <p class="text-slate-300">路程 = 速率 × 時間</p>
+                <p class="text-slate-300">時間 = 路程 ÷ 速率</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 上方演練區 -->
+    <div id="topArea" class="h-[55vh] relative overflow-hidden stage-grid">
+        <div class="watermark-bg">陳俊諺老師製作</div>
+        <div class="center-line"></div>
+        
+        <div id="zoomBadge" class="hidden bg-slate-800 text-white text-[10px] px-3 py-1 rounded-full font-bold opacity-70">
+            🔍 畫面比例 (1:1)
+        </div>
+
+        <div class="origin-label flex items-center gap-2 bg-white/90 px-3 py-1 rounded-full border border-red-200 shadow-sm">
+            <span class="w-2 h-2 bg-red-500 rounded-full"></span>
+            <span class="text-xs font-black text-red-600">中央起點 (0)</span>
+        </div>
+        
+        <div class="absolute top-2 left-4 z-10 pointer-events-none">
+            <div class="bg-white/80 p-2 rounded-lg border border-slate-200 shadow-sm">
+                <h1 class="text-lg font-black text-slate-800 leading-tight">六年級數學：速率模擬器</h1>
+                <p class="text-[10px] font-bold text-indigo-600">陳俊諺老師製作</p>
+            </div>
+        </div>
+
+        <div class="absolute top-2 right-4 flex gap-2 z-10 pointer-events-none">
+            <div class="bg-indigo-600 text-white p-2 rounded-lg shadow-md text-center min-w-[110px]">
+                <div class="text-[9px] font-bold opacity-80" id="timeLabel">時間 (s)</div>
+                <div class="text-2xl font-mono font-bold" id="timerDisplay">0.00</div>
+            </div>
+            <div class="bg-emerald-600 text-white p-2 rounded-lg shadow-md text-center min-w-[110px]">
+                <div class="text-[9px] font-bold opacity-80" id="targetLabel">目標 (s)</div>
+                <div class="text-2xl font-mono font-bold" id="targetDisplay">5.00</div>
+            </div>
+        </div>
+
+        <div id="ruler" class="absolute bottom-2 w-full flex justify-between px-2 text-[11px] text-slate-400 font-bold font-mono pointer-events-none"></div>
+        <div id="tracks" class="relative h-full w-full"></div>
+    </div>
+
+    <!-- 下方設置區 -->
+    <div id="bottomArea" class="h-[45vh] bg-slate-100 p-3 flex flex-col shadow-2xl relative z-30">
+        <div class="flex items-center gap-3 mb-3 shrink-0 flex-wrap">
+            <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border shadow-sm">
+                <label class="text-xs font-bold text-slate-600">單位:</label>
+                <select id="unitSystem" class="text-sm font-bold text-indigo-600 bg-transparent outline-none" onchange="handleUnitChange()">
+                    <option value="ms">m/s</option>
+                    <option value="kmh">km/h</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border shadow-sm">
+                <label class="text-xs font-bold text-slate-600">物件:</label>
+                <select id="objCount" class="text-sm font-bold bg-transparent outline-none" onchange="initSettings()">
+                    <option value="1">1</option>
+                    <option value="2" selected>2</option>
+                    <option value="3">3</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border shadow-sm">
+                <label class="text-xs font-bold text-slate-600">行程時間:</label>
+                <input type="number" id="targetTime" value="5" step="1" min="1" class="w-12 text-sm text-center font-bold text-blue-600 outline-none" onchange="updateTargetDisplay()">
+                <span class="text-xs font-bold text-slate-400 unit-time-full">秒</span>
+            </div>
+            <button onclick="showFormula()" class="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm font-bold text-xs transition active:scale-95">
+                <span>公式提示💡</span>
+            </button>
+            <div class="flex-grow"></div>
+            <div class="flex gap-2">
+                <button onclick="applySettings()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold shadow-md text-sm transition active:scale-95">更新預覽 ↻</button>
+                <button id="runBtn" onclick="toggleSimulation()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-2 rounded-lg font-black shadow-lg text-lg transition active:scale-95">開始運行 ▶</button>
+                <button onclick="resetSimulation()" class="bg-slate-300 hover:bg-slate-400 text-slate-700 px-3 py-2 rounded-lg font-bold text-sm transition">重設</button>
+            </div>
+        </div>
+        <div id="settingsContainer" class="flex gap-3 h-full overflow-x-auto pb-4 px-1"></div>
+    </div>
+
+    <script>
+        const iconGroups = {
+            "交通": ["🚗", "🚌", "🚑", "🚒", "🚲", "🚄", "✈️", "🚀", "🚢", "🚁", "🚜"],
+            "生物": ["🐕", "🐈", "🐇", "🐢", "🐎", "🐘", "🐅", "🐆", "🦖", "🦋", "🐝", "🐞", "🐜"],
+            "人物": ["🏃", "🚶", "🚴", "⛹️", "💃", "🧗", "👩‍🦽", "👨‍🦽"],
+            "趣味": ["💩", "👻", "🤖", "👽", "👾", "🤡", "🎈", "⚽", "🏀"]
+        };
+
+        let objects = [], isRunning = false, animationId = null, elapsedTime = 0, lastTimestamp = 0, toastTimeout = null;
+        let zoomScale = 1;
+        
+        const unitConfig = {
+            ms: { time: 's', timeFull: '秒 (s)', rate: 'm/s', dist: 'm' },
+            kmh: { time: 'h', timeFull: '小時 (h)', rate: 'km/h', dist: 'km' }
+        };
+
+        function showFormula() {
+            const toast = document.getElementById('formulaToast');
+            toast.classList.remove('toast-hidden'); toast.classList.add('toast-visible');
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => { toast.classList.remove('toast-visible'); toast.classList.add('toast-hidden'); }, 3000);
+        }
+
+        function getUnit() { return document.getElementById('unitSystem').value; }
+        
+        function handleUnitChange() {
+            const unit = getUnit();
+            document.getElementById('timeLabel').innerText = `時間 (${unitConfig[unit].time})`;
+            document.getElementById('targetLabel').innerText = `目標 (${unitConfig[unit].time})`;
+            document.querySelectorAll('.unit-time-full').forEach(el => el.innerText = unitConfig[unit].timeFull);
+            updateTargetDisplay();
+        }
+
+        function updateTargetDisplay() {
+            const val = parseFloat(document.getElementById('targetTime').value) || 0;
+            document.getElementById('targetDisplay').innerText = val.toFixed(2);
+            applySettings();
+        }
+
+        function initSettings() {
+            const count = parseInt(document.getElementById('objCount').value);
+            const container = document.getElementById('settingsContainer');
+            container.innerHTML = '';
+            const unit = getUnit();
+            for (let i = 0; i < count; i++) {
+                const card = document.createElement('div');
+                card.className = "flex-1 min-w-[280px] max-w-[340px] bg-white rounded-xl shadow border border-slate-200 p-3 flex flex-col gap-2 shrink-0";
+                const defaultPos = (i === 0) ? -200 : (i === 1 ? 0 : 200);
+                const defaultSpeed = (i === 0) ? 40 : (i === 1 ? 80 : 120);
+                card.innerHTML = `
+                    <div class="flex justify-between items-center border-b pb-1">
+                        <span class="font-black text-indigo-600 text-[10px] uppercase">物件 ${i+1}</span>
+                        <div class="flex gap-1.5 items-center">
+                            <button onclick="flipIcon(${i})" class="text-[10px] bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 font-bold">翻轉</button>
+                            <select id="icon_${i}" class="text-xl bg-slate-50 border rounded px-0.5" onchange="applySettings()">
+                                ${Object.keys(iconGroups).map(g => `<optgroup label="${g}">${iconGroups[g].map(icon => `<option value="${icon}" ${i===0&&icon==='🏃'?'selected':''} ${i===1&&icon==='🚗'?'selected':''} ${i===2&&icon==='🐢'?'selected':''}>${icon}</option>`).join('')}</optgroup>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <input type="text" id="name_${i}" value="物件 ${i+1}" class="w-full text-xs border p-1.5 rounded-md bg-slate-50 font-bold outline-none" onchange="applySettings()">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="bg-slate-50 p-1.5 rounded-md border border-slate-100">
+                                <label class="text-[9px] font-bold text-slate-400 block">起點</label>
+                                <input type="number" id="pos_${i}" value="${defaultPos}" class="w-full text-xs bg-transparent font-bold outline-none" onchange="applySettings()">
+                            </div>
+                            <div class="bg-slate-50 p-1.5 rounded-md border border-slate-100">
+                                <label class="text-[9px] font-black text-slate-400 block">速率 (<span class="unit-rate">${unitConfig[unit].rate}</span>)</label>
+                                <input type="number" id="speed_${i}" value="${defaultSpeed}" class="w-full text-xs bg-transparent text-blue-600 font-bold outline-none" onchange="applySettings()">
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 bg-slate-50 p-1.5 rounded-md border border-slate-100">
+                            <label class="text-[9px] font-bold text-slate-400 shrink-0">方向:</label>
+                            <select id="dir_${i}" class="text-xs bg-transparent font-bold flex-1 outline-none" onchange="applySettings()">
+                                <option value="1">向右 ➔</option>
+                                <option value="-1">向左 ⬅</option>
+                            </select>
+                            <input type="hidden" id="flip_${i}" value="1">
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            }
+            applySettings();
+        }
+
+        function flipIcon(index) {
+            const flipInput = document.getElementById(`flip_${index}`);
+            flipInput.value = flipInput.value === "1" ? "-1" : "1";
+            applySettings();
+        }
+
+        function calculateScaling() {
+            const targetTime = parseFloat(document.getElementById('targetTime').value) || 0;
+            const count = parseInt(document.getElementById('objCount').value);
+            const stageWidth = document.getElementById('topArea').offsetWidth;
+            const halfWidth = (stageWidth / 2) - 80;
+
+            let maxFar = 0;
+            for (let i = 0; i < count; i++) {
+                const startPos = parseFloat(document.getElementById(`pos_${i}`).value) || 0;
+                const speed = parseFloat(document.getElementById(`speed_${i}`).value) || 0;
+                const dir = parseInt(document.getElementById(`dir_${i}`).value);
+                const endPos = startPos + (speed * dir * targetTime);
+                maxFar = Math.max(maxFar, Math.abs(startPos), Math.abs(endPos));
+            }
+
+            zoomScale = maxFar > halfWidth ? maxFar / halfWidth : 1;
+            const badge = document.getElementById('zoomBadge');
+            if (zoomScale > 1) {
+                badge.innerText = `🔍 自動比例 (1:${zoomScale.toFixed(1)})`;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        function applySettings() {
+            stopSimulation();
+            calculateScaling();
+            
+            const tracks = document.getElementById('tracks');
+            tracks.innerHTML = ''; objects = []; elapsedTime = 0; updateUI();
+            const unit = getUnit();
+            const count = parseInt(document.getElementById('objCount').value);
+            const stageHeight = document.getElementById('topArea').offsetHeight;
+            const centerX = document.getElementById('topArea').offsetWidth / 2;
+            
+            drawRuler();
+            updateGrid();
+
+            for (let i = 0; i < count; i++) {
+                const config = {
+                    name: document.getElementById(`name_${i}`).value,
+                    icon: document.getElementById(`icon_${i}`).value,
+                    startOffset: parseFloat(document.getElementById(`pos_${i}`).value) || 0,
+                    speed: parseFloat(document.getElementById(`speed_${i}`).value) || 0,
+                    direction: parseInt(document.getElementById(`dir_${i}`).value),
+                    flip: parseInt(document.getElementById(`flip_${i}`).value)
+                };
+                const laneHeight = stageHeight / count;
+                const objEl = document.createElement('div');
+                objEl.className = "object-node absolute flex flex-col items-center pointer-events-none";
+                objEl.style.top = `${(i * laneHeight) + (laneHeight/2)}px`;
+                objEl.style.left = `${centerX}px`;
+                
+                const visualX = config.startOffset / zoomScale;
+                objEl.style.transform = `translate(-50%, -50%) translateX(${visualX}px)`;
+                
+                // 資訊標籤修改為單行顯示
+                objEl.innerHTML = `
+                    <div class="bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full mb-1 shadow font-bold whitespace-nowrap">${config.name}</div>
+                    <div class="icon-wrapper"><div class="icon-body text-5xl" style="transform: scaleX(${config.flip})">${config.icon}</div></div>
+                    <div class="bg-white/95 border border-slate-200 text-[10px] font-mono text-slate-600 mt-1.5 px-2 py-0.5 rounded-lg shadow-sm flex items-center gap-2" id="data_${i}">
+                        <div class="whitespace-nowrap">路程: <span class="dist-val">0</span> ${unitConfig[unit].dist}</div>
+                        <div class="w-[1px] h-3 bg-slate-200"></div>
+                        <div class="text-blue-600 font-bold whitespace-nowrap">速率: ${config.speed} ${unitConfig[unit].rate}</div>
+                    </div>
+                `;
+                tracks.appendChild(objEl);
+                objects.push({ 
+                    el: objEl, 
+                    distEl: objEl.querySelector('.dist-val'), 
+                    ...config, 
+                    currentActualX: config.startOffset 
+                });
+            }
+        }
+
+        function drawRuler() {
+            const ruler = document.getElementById('ruler');
+            const width = window.innerWidth; 
+            const baseStep = 100;
+            const actualStep = baseStep * zoomScale; 
+            
+            ruler.innerHTML = '';
+            const maxTicks = Math.floor((width / 2) / baseStep);
+            for (let i = -maxTicks; i <= maxTicks; i++) {
+                const span = document.createElement('span');
+                const value = Math.round(i * actualStep);
+                span.innerText = value;
+                ruler.appendChild(span);
+            }
+        }
+
+        function updateGrid() {
+            const step = 100 / zoomScale;
+            document.getElementById('topArea').style.backgroundImage = `linear-gradient(to right, rgba(203, 213, 225, 0.4) 1px, transparent 1px)`;
+            document.getElementById('topArea').style.backgroundSize = `${step}px 100%`;
+            document.getElementById('topArea').style.backgroundPosition = `center center`;
+        }
+
+        function toggleSimulation() {
+            if (isRunning) { stopSimulation(); } 
+            else { 
+                const target = parseFloat(document.getElementById('targetTime').value); 
+                if (elapsedTime >= target) applySettings(); 
+                startSimulation(); 
+            }
+        }
+
+        function startSimulation() {
+            isRunning = true;
+            document.getElementById('runBtn').innerText = "暫停 ⏸";
+            document.getElementById('runBtn').classList.replace('bg-emerald-600', 'bg-orange-500');
+            objects.forEach(o => o.el.classList.add('is-moving'));
+            lastTimestamp = performance.now();
+            animationId = requestAnimationFrame(mainLoop);
+        }
+
+        function stopSimulation() {
+            isRunning = false; cancelAnimationFrame(animationId);
+            document.getElementById('runBtn').innerText = "開始運行 ▶";
+            if (document.getElementById('runBtn').classList.contains('bg-orange-500')) document.getElementById('runBtn').classList.replace('bg-orange-500', 'bg-emerald-600');
+            objects.forEach(o => o.el.classList.remove('is-moving'));
+        }
+
+        function resetSimulation() { stopSimulation(); elapsedTime = 0; applySettings(); updateUI(); }
+
+        function mainLoop(timestamp) {
+            if (!isRunning) return;
+            const delta = (timestamp - lastTimestamp) / 1000;
+            lastTimestamp = timestamp;
+            const target = parseFloat(document.getElementById('targetTime').value);
+            
+            if (elapsedTime + delta >= target) { 
+                const actualStep = target - elapsedTime;
+                elapsedTime = target; 
+                updateObjects(actualStep);
+                isRunning = false; 
+            } else { 
+                elapsedTime += delta; 
+                updateObjects(delta);
+            }
+            
+            updateUI();
+            if (isRunning) { animationId = requestAnimationFrame(mainLoop); } 
+            else { stopSimulation(); document.getElementById('runBtn').innerText = "再次運行 ▶"; }
+        }
+
+        function updateObjects(step) {
+            objects.forEach(obj => {
+                obj.currentActualX += obj.speed * obj.direction * step;
+                const visualX = obj.currentActualX / zoomScale;
+                obj.el.style.transform = `translate(-50%, -50%) translateX(${visualX}px)`;
+                const dist = Math.abs(obj.currentActualX - obj.startOffset).toFixed(1);
+                obj.distEl.innerText = dist;
+            });
+        }
+
+        function updateUI() { document.getElementById('timerDisplay').innerText = elapsedTime.toFixed(2); }
+
+        window.onload = () => { initSettings(); handleUnitChange(); };
+        window.onresize = () => { applySettings(); };
+    </script>
+</body>
+</html>
